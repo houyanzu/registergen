@@ -67,11 +67,12 @@ func main() {
 	"strings"
 	"unicode"
 	"github.com/gin-gonic/gin"
+	"github.com/houyanzu/work-box/tool/middleware"
 `
 	for _, v := range imports {
 		importStr += "\t" + v + "\n"
 	}
-	importStr += ")\n"
+	importStr += ")\n\n"
 	_, err = file.WriteString(importStr)
 	if err != nil {
 		fmt.Println("Error writing to file:", err)
@@ -96,14 +97,15 @@ func main() {
 		// 写入函数定义
 		ss += v
 	}
-	ss = "func init() {" + ss + "\n}\n\n"
+	ss = "func init() {" + ss + "\n}\n"
 	_, err = file.WriteString(ss)
 	if err != nil {
 		fmt.Println("Error writing to file:", err)
 		return
 	}
 
-	otherStr := `func Register(router *gin.Engine) {
+	otherStr := `
+func Register(router *gin.Engine) {
 	for _, v := range controllers {
 		AutoRegisterRoutes(router, v)
 	}
@@ -121,12 +123,35 @@ func AutoRegisterRoutes(router *gin.Engine, controller interface{}) {
 	for i := 0; i < controllerType.NumMethod(); i++ {
 		method := controllerType.Method(i)
 		methodName := getControllerRouterName(method.Name)
+		methodType := method.Type
+		numIn := methodType.NumIn()
+		if numIn < 2 {
+			continue
+		}
 
-		// 注册方法为 Gin 的 GET 路由
+		firstParamType := getParamTypeName(methodType.In(1))
+		if firstParamType != "Context" {
+			continue
+		}
+
+		// 注册方法为 Gin 的 Post 路由
 		route := fmt.Sprintf("api/%s/%s", baseRoute, methodName)
-		router.POST(route, func(ctx *gin.Context) {
-			method.Func.Call([]reflect.Value{controllerValue, reflect.ValueOf(ctx)})
-		})
+		switch numIn {
+		case 2:
+			router.POST(route, func(ctx *gin.Context) {
+				method.Func.Call([]reflect.Value{controllerValue, reflect.ValueOf(ctx)})
+			})
+
+		case 3:
+			secondParamType := getParamTypeName(methodType.In(2))
+			if secondParamType == "uint" {
+				router.POST(route, middleware.Login(), func(ctx *gin.Context) {
+					userID := middleware.GetUserId(ctx)
+					method.Func.Call([]reflect.Value{controllerValue, reflect.ValueOf(ctx), reflect.ValueOf(userID)})
+				})
+			}
+		}
+
 	}
 }
 
@@ -171,6 +196,15 @@ func getControllerRouterName(input string) string {
 
 	return string(runes)
 }
+
+func getParamTypeName(paramType reflect.Type) string {
+	if paramType.Kind() == reflect.Ptr {
+		return paramType.Elem().Name()
+	} else {
+		return paramType.Name()
+	}
+}
+
 `
 	_, err = file.WriteString(otherStr)
 	if err != nil {

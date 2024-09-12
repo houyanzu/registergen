@@ -35,6 +35,14 @@ func main() {
 		return
 	}
 	defer file.Close()
+	str := `// Code generated - DO NOT EDIT.
+// This file is a generated binding and any manual changes will be lost.` + "\n\n"
+
+	_, err = file.WriteString(str)
+	if err != nil {
+		fmt.Println("Error writing to file:", err)
+		return
+	}
 
 	// 写入 package 声明
 	_, err = file.WriteString("package main\n\n")
@@ -83,13 +91,16 @@ func main() {
 		return
 	}
 
+	ss := ""
 	for _, v := range inits {
 		// 写入函数定义
-		_, err = file.WriteString(v)
-		if err != nil {
-			fmt.Println("Error writing to file:", err)
-			return
-		}
+		ss += v
+	}
+	ss = "func init() {" + ss + "\n}\n\n"
+	_, err = file.WriteString(ss)
+	if err != nil {
+		fmt.Println("Error writing to file:", err)
+		return
 	}
 
 	otherStr := `func Register(router *gin.Engine) {
@@ -220,7 +231,7 @@ func processGoFile(filePath string, file *os.File) error {
 				controllerName := typeSpec.Name.Name
 				controllerName = alias + "." + controllerName
 				// Write out code to register the controller
-				inits = append(inits, fmt.Sprintf("func init() {\n\tRegisterController(%s{})\n}\n\n", controllerName))
+				inits = append(inits, fmt.Sprintf("\n\tRegisterController(%s{})", controllerName))
 
 				have = true
 			}
